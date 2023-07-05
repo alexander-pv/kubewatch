@@ -1,0 +1,33 @@
+handler:
+  slack:
+    token: ""
+    channel: ""
+  hipchat:
+    token: ""
+    room: ""
+    url: ""
+  mattermost:
+    channel: ""
+    url: ""
+    username: ""
+  flock:
+    url: ""
+  webhook:
+    url: ""
+    tlsskip: ""
+    cert: ""
+  discord:
+    url: "https://discord.com/api/webhooks/foo/bar"
+    username: "kubewatch-bot"
+resource:
+  deployment: false
+  replicationcontroller: false
+  replicaset: false
+  daemonset: false
+  services: false
+  pod: false
+  job: false
+  persistentvolume: false
+  namespace: true
+  secret: false
+  ingress: false

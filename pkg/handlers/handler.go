@@ -19,6 +19,7 @@ package handlers
 import (
 	"github.com/bitnami-labs/kubewatch/config"
 	"github.com/bitnami-labs/kubewatch/pkg/event"
+	"github.com/bitnami-labs/kubewatch/pkg/handlers/discord"
 	"github.com/bitnami-labs/kubewatch/pkg/handlers/flock"
 	"github.com/bitnami-labs/kubewatch/pkg/handlers/hipchat"
 	"github.com/bitnami-labs/kubewatch/pkg/handlers/lark"
@@ -49,6 +50,7 @@ var Map = map[string]interface{}{
 	"ms-teams":     &msteam.MSTeams{},
 	"smtp":         &smtp.SMTP{},
 	"lark":         &lark.Webhook{},
+	"discord":      &discord.DiscordWebhook{},
 }
 
 // Default handler implements Handler interface,

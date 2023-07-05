@@ -16,8 +16,31 @@ limitations under the License.
 
 package main
 
-import "github.com/bitnami-labs/kubewatch/cmd"
+import (
+	"github.com/bitnami-labs/kubewatch/cmd"
+	"github.com/sirupsen/logrus"
+	"os"
+	"strings"
+)
 
 func main() {
+	logLevel := strings.ToLower(os.Getenv("LOG_LEVEL"))
+	if len(logLevel) == 0 {
+		logLevel = "info"
+	}
+
+	// Set the log level based on the environment variable
+	switch logLevel {
+	case "debug":
+		logrus.SetLevel(logrus.DebugLevel)
+	case "info":
+		logrus.SetLevel(logrus.InfoLevel)
+	case "warn":
+		logrus.SetLevel(logrus.WarnLevel)
+	case "error":
+		logrus.SetLevel(logrus.ErrorLevel)
+	default:
+		logrus.SetLevel(logrus.InfoLevel) // Default to info level if the environment variable is not set or invalid
+	}
 	cmd.Execute()
 }

@@ -41,6 +41,7 @@ supported webhooks:
  - webhook
  - cloudevent
  - smtp
+ - discord
 
 Usage:
   kubewatch [flags]

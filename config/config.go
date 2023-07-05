@@ -43,6 +43,7 @@ type Handler struct {
 	Mattermost   Mattermost   `json:"mattermost"`
 	Flock        Flock        `json:"flock"`
 	Webhook      Webhook      `json:"webhook"`
+	Discord      Discord      `json:"discord"`
 	CloudEvent   CloudEvent   `json:"cloudevent"`
 	MSTeams      MSTeams      `json:"msteams"`
 	SMTP         SMTP         `json:"smtp"`
@@ -139,6 +140,13 @@ type Webhook struct {
 	Url     string `json:"url"`
 	Cert    string `json:"cert"`
 	TlsSkip bool   `json:"tlsskip"`
+}
+
+// Discord contains Discord webhook configuration
+type Discord struct {
+	// Discord webhook URL
+	Url      string `json:"url"`
+	Username string `json:"username"`
 }
 
 // Lark contains lark configuration

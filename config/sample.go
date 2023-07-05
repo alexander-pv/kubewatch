@@ -30,6 +30,10 @@ handler:
     tlsskip: ""
     # Path of webhook cert. Default value is false.
     cert: ""
+  discord:
+	# Discord webhook 
+	url: ""
+    username: ""
   cloudevent:
     # CloudEvent webhook URL.
     url: ""
