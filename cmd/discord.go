@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"github.com/bitnami-labs/kubewatch/config"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 )
 
 // webhookConfigCmd represents the webhook subcommand
@@ -39,6 +41,6 @@ var discordConfigCmd = &cobra.Command{
 }
 
 func init() {
-	webhookConfigCmd.Flags().StringP("url", "u", "", "Specify Discord webhook url")
-	webhookConfigCmd.Flags().StringP("username", "", "", "Specify Discord bot username")
+	discordConfigCmd.Flags().StringP("url", "u", "", "Specify Discord webhook url")
+	discordConfigCmd.Flags().StringP("username", "n", "", "Specify Discord bot username")
 }
