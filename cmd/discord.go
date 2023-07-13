@@ -25,6 +25,7 @@ var discordConfigCmd = &cobra.Command{
 		} else {
 			logrus.Fatal(err)
 		}
+
 		username, err := cmd.Flags().GetString("username")
 		if err == nil {
 			if len(url) > 0 {
@@ -32,6 +33,13 @@ var discordConfigCmd = &cobra.Command{
 			}
 		} else {
 			logrus.Fatal(err)
+		}
+
+		avatar, err := cmd.Flags().GetString("avatar_url")
+		if err == nil {
+			if len(avatar) > 0 {
+				conf.Handler.Discord.AvatarURL = avatar
+			}
 		}
 
 		if err = conf.Write(); err != nil {
@@ -43,4 +51,5 @@ var discordConfigCmd = &cobra.Command{
 func init() {
 	discordConfigCmd.Flags().StringP("url", "u", "", "Specify Discord webhook url")
 	discordConfigCmd.Flags().StringP("username", "n", "", "Specify Discord bot username")
+	discordConfigCmd.Flags().StringP("avatar_url", "a", "", "Specify Discord bot avatar url")
 }

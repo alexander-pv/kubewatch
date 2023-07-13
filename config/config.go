@@ -145,8 +145,9 @@ type Webhook struct {
 // Discord contains Discord webhook configuration
 type Discord struct {
 	// Discord webhook URL
-	Url      string `json:"url"`
-	Username string `json:"username"`
+	Url       string `json:"url"`
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url"`
 }
 
 // Lark contains lark configuration

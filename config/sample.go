@@ -34,6 +34,7 @@ handler:
 	# Discord webhook 
 	url: ""
     username: ""
+	avatar_url: ""
   cloudevent:
     # CloudEvent webhook URL.
     url: ""

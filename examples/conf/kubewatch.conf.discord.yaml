@@ -19,6 +19,7 @@ handler:
   discord:
     url: "https://discord.com/api/webhooks/foo/bar"
     username: "kubewatch-bot"
+    avatar_url: "https://cdn-icons-png.flaticon.com/512/4712/4712035.png"
 resource:
   deployment: false
   replicationcontroller: false

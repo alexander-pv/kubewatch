@@ -17,24 +17,36 @@ import (
 var discordErrMsg = `
 %s
 
-You need to set Webhook url using "--url/-u, --username/-n" or using environment variables:
+You need to set Discord parameters in k8s configmap or using "--url/-u, --username/-n, --avatar_url/-a" or using environment variables:
 
 export KW_DISCORD_WEBHOOK_URL=discord_webhook_url
 export KW_DISCORD_USERNAME=discord_username
+export KW_DISCORD_AVATAR_URL=avatar_url
 
 Command line flags will override environment variables
 
-`
+
+` // Green, Yellow, Red
+var colorMap = map[string]string{"Info": "5763719", "Warning": "16776960", "Critical": "15548997"}
+
+type DiscordEmbed struct {
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Color       string `json:"color,omitempty"`
+}
 
 type DiscordWebhook struct {
-	Url      string
-	Username string
+	Url       string
+	Username  string
+	AvatarURL string
 }
 
 // DiscordMessage
 type DiscordMessage struct {
-	Username string `json:"username"`
-	Content  string `json:"content"`
+	Username  string          `json:"username"`
+	Content   string          `json:"content"`
+	AvatarURL string          `json:"avatar_url"`
+	Embeds    *[]DiscordEmbed `json:"embeds,omitempty"`
 }
 
 // EventMessage for DiscordMessage
@@ -56,6 +68,7 @@ type EventMeta struct {
 func (m *DiscordWebhook) Init(c *config.Config) error {
 	url := c.Handler.Discord.Url
 	username := c.Handler.Discord.Username
+	avatar := c.Handler.Discord.AvatarURL
 
 	if url == "" {
 		url = os.Getenv("KW_DISCORD_WEBHOOK_URL")
@@ -63,18 +76,22 @@ func (m *DiscordWebhook) Init(c *config.Config) error {
 	if username == "" {
 		username = os.Getenv("KW_DISCORD_USERNAME")
 	}
+	if avatar == "" {
+		avatar = os.Getenv("KW_DISCORD_AVATAR_URL")
+	}
 
 	m.Url = url
 	m.Username = username
+	m.AvatarURL = avatar
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	return checkMissingDiscordVars(m)
 }
 
 // Handle handles an event.
 func (m *DiscordWebhook) Handle(e event.Event) {
-	DiscordMessage := prepareDiscordMessage(e, m)
+	discordMessage := prepareDiscordMessage(e, m)
 
-	err := postMessage(m.Url, DiscordMessage)
+	err := postMessage(m.Url, discordMessage)
 	if err != nil {
 		logrus.Printf("%s\n", err)
 		return
@@ -90,6 +107,11 @@ func checkMissingDiscordVars(s *DiscordWebhook) error {
 	if s.Username == "" {
 		return fmt.Errorf(discordErrMsg, "Missing Discord bot username")
 	}
+	if s.AvatarURL == "" {
+		logrus.Debugf("Missing Discord bot avatar url. Setting default Woof-woof")
+		s.AvatarURL = "https://i.imgur.com/oBPXx0D.png"
+
+	}
 
 	return nil
 }
@@ -98,19 +120,24 @@ func formatEventContent(e event.Event) string {
 	eventMeta := fmt.Sprintf("Kind: %s\nName: %s\nNamespace: %s\nReason: %s\n",
 		e.Kind, e.Name, e.Namespace, e.Reason)
 	eventText := fmt.Sprintf("Text: %s\n", e.Message())
-	eventTime := fmt.Sprintf("Time: %s\n", time.Now().Format(time.RFC3339))
-
+	eventTime := fmt.Sprintf("UTC Time: %s\n", time.Now().Format(time.RFC3339))
 	return eventMeta + eventText + eventTime
+}
+
+func prepareDiscordEmbeds(e event.Event) *DiscordEmbed {
+	return &DiscordEmbed{Title: e.Status, Description: e.InfoMessage, Color: colorMap[e.Status]}
 }
 
 func prepareDiscordMessage(e event.Event, m *DiscordWebhook) *DiscordMessage {
 
 	eventContent := formatEventContent(e)
 	formattedContent := fmt.Sprintf("```md\n%s\n```", eventContent)
-
+	embeds := prepareDiscordEmbeds(e)
 	return &DiscordMessage{
-		Username: m.Username,
-		Content:  formattedContent,
+		Username:  m.Username,
+		Content:   formattedContent,
+		AvatarURL: m.AvatarURL,
+		Embeds:    &[]DiscordEmbed{*embeds},
 	}
 
 }
@@ -134,7 +161,7 @@ func postMessage(url string, discordMessage *DiscordMessage) error {
 		return err
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		logrus.Errorf("Unexpected response status: %d", resp.StatusCode)
 		responseBody, _ := ioutil.ReadAll(resp.Body)
 		logrus.Debugf("Response body: %s", responseBody)

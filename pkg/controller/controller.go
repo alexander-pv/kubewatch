@@ -62,7 +62,7 @@ const EVENTS_V1 = "events.k8s.io/v1"
 var serverStartTime time.Time
 
 // Event indicate the informerEvent
-type Event struct {
+type InformerEvent struct {
 	key          string
 	eventType    string
 	namespace    string
@@ -550,7 +550,7 @@ func Start(conf *config.Config, eventHandler handlers.Handler) {
 
 func newResourceController(client kubernetes.Interface, eventHandler handlers.Handler, informer cache.SharedIndexInformer, resourceType string, apiVersion string) *Controller {
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-	var newEvent Event
+	var newEvent InformerEvent
 	var err error
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -659,16 +659,16 @@ func (c *Controller) processNextItem() bool {
 		return false
 	}
 	defer c.queue.Done(newEvent)
-	err := c.processItem(newEvent.(Event))
+	err := c.processItem(newEvent.(InformerEvent))
 	if err == nil {
 		// No error, reset the ratelimit counters
 		c.queue.Forget(newEvent)
 	} else if c.queue.NumRequeues(newEvent) < maxRetries {
-		c.logger.Errorf("Error processing %s (will retry): %v", newEvent.(Event).key, err)
+		c.logger.Errorf("Error processing %s (will retry): %v", newEvent.(InformerEvent).key, err)
 		c.queue.AddRateLimited(newEvent)
 	} else {
 		// err != nil and too many retries
-		c.logger.Errorf("Error processing %s (giving up): %v", newEvent.(Event).key, err)
+		c.logger.Errorf("Error processing %s (giving up): %v", newEvent.(InformerEvent).key, err)
 		c.queue.Forget(newEvent)
 		utilruntime.HandleError(err)
 	}
@@ -682,20 +682,7 @@ func (c *Controller) processNextItem() bool {
 - Send alerts correspoding to events - done
 */
 
-func (c *Controller) processItem(newEvent Event) error {
-	// NOTE that obj will be nil on deletes!
-	obj, _, err := c.informer.GetIndexer().GetByKey(newEvent.key)
-
-	if err != nil {
-		return fmt.Errorf("Error fetching object with key %s from store: %v", newEvent.key, err)
-	}
-	// get object's metedata
-	objectMeta := utils.GetObjectMetaData(obj)
-
-	// hold status type for default critical alerts
-	var status string
-
-	// namespace retrived from event key incase namespace value is empty
+func processEventNamespace(newEvent *InformerEvent, objectMeta *meta_v1.ObjectMeta) {
 	if newEvent.namespace == "" && strings.Contains(newEvent.key, "/") {
 		substring := strings.Split(newEvent.key, "/")
 		newEvent.namespace = substring[0]
@@ -703,71 +690,100 @@ func (c *Controller) processItem(newEvent Event) error {
 	} else {
 		newEvent.namespace = objectMeta.Namespace
 	}
+}
+
+func (c *Controller) processPodResource(newEvent *InformerEvent, obj interface{}) error {
+	logrus.Debugf("Inside processPodResource")
+	pod, ok := obj.(*api_v1.Pod)
+	if !ok {
+		return fmt.Errorf("unexpected object type: %T", obj)
+	}
+	logrus.Debugf("Pod object: %s\n\n", pod)
+	logrus.Debugf("Pod.Status: %s\n\n", pod.Status)
+	logrus.Debugf("Pod.Status.ContainerStatuses: %s\n\n", pod.Status.ContainerStatuses)
+	// Process Pod Loop
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.State.Waiting != nil {
+			logrus.Debugf("ContainerStatus.State.Waiting: %s ContainerStatus.State.Waiting.Reason: %s", containerStatus.State.Waiting, containerStatus.State.Waiting.Reason)
+			if containerStatus.State.Waiting.Reason != "ContainerCreating" {
+				fmt.Printf("PodName: %s, Namespace: %s, Phase: %s\n", pod.ObjectMeta.Name, pod.ObjectMeta.Namespace, pod.Status.Phase)
+				c.eventHandler.Handle(event.Event{
+					Name:        newEvent.key,
+					Namespace:   newEvent.namespace,
+					Kind:        newEvent.resourceType,
+					ApiVersion:  newEvent.apiVersion,
+					Status:      "Critical",
+					Reason:      containerStatus.State.Waiting.Reason,
+					InfoMessage: containerStatus.State.Waiting.Message,
+					Obj:         newEvent.obj,
+					OldObj:      newEvent.oldObj,
+				})
+			}
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) processDefault(newEvent *InformerEvent, Status string, Reason string) error {
+
+	kbEvent := event.Event{
+		Name:       newEvent.key,
+		Namespace:  newEvent.namespace,
+		Kind:       newEvent.resourceType,
+		ApiVersion: newEvent.apiVersion,
+		Status:     Status,
+		Reason:     Reason,
+		Obj:        newEvent.obj,
+	}
+	c.eventHandler.Handle(kbEvent)
+	return nil
+}
+
+func (c *Controller) processItem(newEvent InformerEvent) error {
+	// NOTE that obj will be nil on deletes!
+
+	// Suggested list of internal statuses: Info, Warning, Critical
+	obj, _, err := c.informer.GetIndexer().GetByKey(newEvent.key)
+	if err != nil {
+		return fmt.Errorf("Error fetching object with key %s from store: %v", newEvent.key, err)
+	}
+	// get object's metadata
+	objectMeta := utils.GetObjectMetaData(obj)
+	// namespace retrieved from event key in case namespace value is empty
+	processEventNamespace(&newEvent, &objectMeta)
 
 	// process events based on its type
+	logrus.Debugf("newEvent.resourceType: %s", newEvent.resourceType)
 	switch newEvent.eventType {
 	case "create":
 		// compare CreationTimestamp and serverStartTime and alert only on latest events
 		// Could be Replaced by using Delta or DeltaFIFO
 		if objectMeta.CreationTimestamp.Sub(serverStartTime).Seconds() > 0 {
 			switch newEvent.resourceType {
-			case "NodeNotReady":
-				status = "Danger"
-			case "NodeReady":
-				status = "Normal"
-			case "NodeRebooted":
-				status = "Danger"
-			case "Backoff":
-				status = "Danger"
+			// TODO: Process other resourceType (Deployment, Event, Node, etc.)
+			case "Pod":
+				_ = c.processPodResource(&newEvent, obj)
 			default:
-				status = "Normal"
+				_ = c.processDefault(&newEvent, "Info", "default Create event")
 			}
-			kbEvent := event.Event{
-				Name:       newEvent.key,
-				Namespace:  newEvent.namespace,
-				Kind:       newEvent.resourceType,
-				ApiVersion: newEvent.apiVersion,
-				Status:     status,
-				Reason:     "Created",
-				Obj:        newEvent.obj,
-			}
-			c.eventHandler.Handle(kbEvent)
+
 			return nil
 		}
 	case "update":
-		/* TODOs
-		- enahace update event processing in such a way that, it send alerts about what got changed.
-		*/
 		switch newEvent.resourceType {
-		case "Backoff":
-			status = "Danger"
+		// TODO: Process other resourceType (Deployment, Event, Node, etc.)
+		case "Pod":
+			_ = c.processPodResource(&newEvent, obj)
 		default:
-			status = "Warning"
+			_ = c.processDefault(&newEvent, "Info", "default Update event")
 		}
-		kbEvent := event.Event{
-			Name:       newEvent.key,
-			Namespace:  newEvent.namespace,
-			Kind:       newEvent.resourceType,
-			ApiVersion: newEvent.apiVersion,
-			Status:     status,
-			Reason:     "Updated",
-			Obj:        newEvent.obj,
-			OldObj:     newEvent.oldObj,
-		}
-		c.eventHandler.Handle(kbEvent)
 		return nil
+
 	case "delete":
-		kbEvent := event.Event{
-			Name:       newEvent.key,
-			Namespace:  newEvent.namespace,
-			Kind:       newEvent.resourceType,
-			ApiVersion: newEvent.apiVersion,
-			Status:     "Danger",
-			Reason:     "Deleted",
-			Obj:        newEvent.obj,
-		}
-		c.eventHandler.Handle(kbEvent)
+		_ = c.processDefault(&newEvent, "Warning", "Deleted event")
 		return nil
 	}
+
 	return nil
 }
